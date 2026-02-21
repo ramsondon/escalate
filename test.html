@@ -1,0 +1,253 @@
+<!-- write html header -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test</title>
+    <!--    <link rel="stylesheet" href="style.css">-->
+    <script src="tone.js"></script>
+</head>
+
+<body>
+<h1>Test</h1>
+<p>This is a test page.</p>
+<button id="testButton">Click me</button>
+<div id="testDiv">
+    <button id="patternBasic">Basic Beat</button>
+    <button id="patternIntense">Intense Beat</button>
+    <button id="patternMinimal">Minimal Beat</button>
+</div>
+<script>
+    (function () {
+        'use strict';
+
+        const notation = {
+            songTitle: "Fractured Echoes",
+            tempo: 128,
+            key: "Am",
+            sections: [
+                {
+                    chordProgression: ["Am", "G", "C", "F"],
+                    loopable: true,
+                },
+                {
+                    chordProgression: ["Dm", "Am", "E7", "Am"],
+                    loopable: true,
+                },
+            ],
+            soundDesign: {
+                leadSynthWaveform: "pwm",
+                leadSynthPWM: 0.7, // Low PWM for now
+                filterCutoff: 2000,
+                filterResonance: 0.5,
+                kickWaveform: "sine",
+                hihatWaveform: "white",
+                reverb: 1.2,
+                delayTime: 0.7,
+                delayFeedback: 0.3,
+            },
+        };
+        notation.patterns = {
+            hihat: {
+                basic: [0, null, 0, null],
+                intense: [0, 0, 0, 0],
+                sparse: [0, null, null, null]
+            },
+            kick: {
+                basic: ["A0", null, null, null, "C1", null, null, null],
+                intense: ["A0", null, "C1", null, "C1", null, "C1", null],
+                minimal: ["A0", null, null, null, null, null, null, null]
+            }
+        };
+
+        // Basic Playback Engine (Conceptual)
+        // Create a proper effects chain for each instrument
+        function createEffectsChain() {
+            // Create shared effects
+            const panner = new Tone.Panner(0);
+
+            // Fix the delay feedback setting
+            const delay = new Tone.FeedbackDelay(notation.soundDesign.delayTime,
+                notation.soundDesign.delayFeedback)
+                .connect(Tone.getDestination());
+
+            // Create reverb with proper initialization
+            const reverb = new Tone.Reverb();
+            reverb.decay = notation.soundDesign.reverb;
+            reverb.wet.value = 0.5;
+            reverb.connect(delay);
+
+            const compressor = new Tone.Compressor({
+                threshold: -50,
+                ratio: 4,
+                attack: 0.1,
+                release: 0.5
+            }).connect(reverb);
+
+            return compressor; // Return the first element in the chain
+        }
+
+// Create instruments without connecting to destination
+        const effectsChain = createEffectsChain();
+
+// Lead synth
+        const synth = new Tone.Synth({
+            oscillator: {
+                type: notation.soundDesign.leadSynthWaveform
+            },
+            envelope: {
+                attack: 0.1,
+                decay: 0.2,
+                sustain: 0.5,
+                release: 0.5
+            }
+        });
+
+// Add filter
+        const filter = new Tone.Filter(notation.soundDesign.filterCutoff, "lowpass");
+        filter.Q.value = notation.soundDesign.filterResonance;
+        synth.connect(filter);
+        filter.connect(effectsChain);
+
+// Kick
+        const kick = new Tone.MembraneSynth({
+            pitchDecay: 0.15,
+            octaves: 1,
+            oscillator: {
+                type: notation.soundDesign.kickWaveform
+            },
+            envelope: {
+                attack: 0.1,
+                decay: 0.2,
+                sustain: 0.5,
+                release: 0.5
+            },
+            volume: 13
+        }).connect(effectsChain);
+
+// Hi-hat (reduce volume to balance with other instruments)
+        // Hi-hat with higher volume
+        const hihat = new Tone.NoiseSynth({
+            noise: {
+                type: notation.soundDesign.hihatWaveform,
+                playbackRate: 1
+            },
+            envelope: {
+                attack: 0.001,
+                decay: 0.1,
+                sustain: 0,
+                release: 0.1
+            },
+            volume: -6 // Less reduction for more audible hihat
+        }).connect(effectsChain);
+
+
+// Create a function to change patterns
+        function changePattern(patternName = "basic") {
+            // Stop current sequences
+            hihatSequence.stop();
+            kickSequence.stop();
+            chordSequence.stop();
+
+            // Update sequences with new patterns
+            hihatSequence.events = notation.patterns.hihat[patternName];
+            kickSequence.events = notation.patterns.kick[patternName];
+
+            // Restart sequences
+            hihatSequence.start(0);
+            kickSequence.start(0);
+            chordSequence.start(0);
+        }
+
+// Modify playNotation function to store sequences globally
+        let hihatSequence, kickSequence, chordSequence;
+
+        function playNotation() {
+            // Start the Tone.js audio context
+            Tone.start();
+
+            const bpm = notation.tempo;
+            Tone.Transport.bpm.value = bpm;
+
+            const section = notation.sections[0]; // Using first section for simplicity
+            const chordArray = section.chordProgression;
+            const noteDuration = "4n"; // quarter note
+
+            // Set synth properties
+            synth.oscillator.type = notation.soundDesign.leadSynthWaveform;
+
+            // Create a sequence for the chord progression
+            chordSequence = new Tone.Sequence((time, chord) => {
+                // Convert chord names to frequencies
+                let note;
+                switch (chord) {
+                    case 'Am':
+                        note = 'A3';
+                        break;
+                    case 'G':
+                        note = 'G3';
+                        break;
+                    case 'C':
+                        note = 'C4';
+                        break;
+                    case 'F':
+                        note = 'F3';
+                        break;
+                    case 'Dm':
+                        note = 'D3';
+                        break;
+                    case 'E7':
+                        note = 'E3';
+                        break;
+                    default:
+                        note = 'A3';
+                }
+
+                synth.triggerAttackRelease(note, noteDuration, time);
+            }, chordArray, "1n"); // Each chord lasts 1 measure (whole note)
+
+            // Create hi-hat sequence with initial pattern
+            hihatSequence = new Tone.Sequence((time, value) => {
+                if (value !== null) {
+                    hihat.triggerAttackRelease("16n", time);
+                }
+            }, notation.patterns.hihat.basic, "8n");
+
+            // Create kick drum sequence with initial pattern
+            kickSequence = new Tone.Sequence((time, note) => {
+                if (note) {
+                    kick.triggerAttackRelease(note, "8n", time);
+                }
+            }, notation.patterns.kick.basic, "8n");
+
+            // Start the sequences
+            chordSequence.start(0);
+            hihatSequence.start(0);
+            kickSequence.start(0);
+
+            // Start the transport
+            Tone.Transport.start();
+        }
+
+        document.getElementById('patternBasic').addEventListener('click', () => changePattern('basic'));
+        document.getElementById('patternIntense').addEventListener('click', () => changePattern('intense'));
+        document.getElementById('patternMinimal').addEventListener('click', () => changePattern('minimal'));
+
+// Update event listener to include a stop button or function
+        document.getElementById('testButton').addEventListener('click', function () {
+            // Stop any previous playback and reset
+            if (hihatSequence) {
+                hihatSequence.stop();
+                kickSequence.stop();
+                chordSequence.stop();
+            }
+            Tone.Transport.stop();
+            Tone.Transport.cancel();
+
+            // Start new playback
+            playNotation();
+        });
+    })();
+</script>
+</body>
